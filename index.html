@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Portal Kampus Fiktif (Latihan KSI)</title>
+<style>
+:root{--ink:#1d2b45;--bg:#f6f7f9;--card:#fff;--line:#d9dee7;--acc:#0f766e;--warn:#fde68a}
+@media(prefers-color-scheme:dark){:root{--ink:#e6ebf5;--bg:#10151f;--card:#18202e;--line:#2c374a;--acc:#2dd4bf;--warn:#5b4a10}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Georgia,'Times New Roman',serif}
+.warn{background:var(--warn);padding:.5rem 1rem;font:14px/1.4 system-ui,sans-serif;color:var(--ink)}
+header{display:flex;flex-wrap:wrap;gap:.25rem 1rem;align-items:center;padding:.75rem 1rem;border-bottom:1px solid var(--line);background:var(--card);font-family:system-ui,sans-serif}
+header a,.lnk{color:var(--acc);text-decoration:none;font-weight:600}
+header span{margin-left:auto;font-size:14px}
+main{max-width:760px;margin:0 auto;padding:1rem}
+h2{margin:.5rem 0 1rem}
+table{width:100%;border-collapse:collapse;background:var(--card);font-family:system-ui,sans-serif;font-size:15px}
+th,td{border:1px solid var(--line);padding:.5rem;text-align:left}
+input,select,textarea,button{font:inherit;padding:.5rem;border:1px solid var(--line);border-radius:4px;background:var(--card);color:var(--ink);max-width:100%}
+textarea{width:100%}
+button{background:var(--acc);color:#fff;border:0;cursor:pointer;font-weight:600}
+button.sec{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+label{display:block;margin:.6rem 0 .2rem;font-family:system-ui,sans-serif;font-size:14px}
+.post{background:var(--card);border:1px solid var(--line);padding:.6rem .8rem;margin:.5rem 0}
+.post small{color:var(--acc);font-family:system-ui,sans-serif}
+.box{background:var(--card);border:1px solid var(--line);padding:1rem;margin:.75rem 0}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="warn"><b>PORTAL FIKTIF: data sintetis.</b> Sengaja dibuat rentan untuk latihan keamanan. Jangan masukkan data asli.</div>
+<header id="nav"></header>
+<main id="app"></main>
+<script>
+/* Data tersimpan di localStorage browser (tanpa server). Semua akun dan data sintetis. */
+var K='portal_db_v1';
+var seed={
+ users:[
+  {id:1,u:'admin',p:'Admin#2026',role:'admin',nama:'Admin Portal',aktif:true},
+  {id:2,u:'dosen1',p:'Dosen#2026',role:'dosen',nama:'Dr. Maya Kusuma',aktif:true},
+  {id:3,u:'mhs1',p:'Mhs#0001',role:'mhs',nama:'Raka Pratama',nim:'24990001',aktif:true},
+  {id:4,u:'mhs2',p:'Mhs#0002',role:'mhs',nama:'Dewi Anggraini',nim:'24990002',aktif:true}
+ ],
+ nilai:[
+  {uid:3,mk:'Keamanan Sistem Informasi',nilai:84},{uid:3,mk:'Basis Data',nilai:78},
+  {uid:4,mk:'Keamanan Sistem Informasi',nilai:91},{uid:4,mk:'Basis Data',nilai:88}
+ ],
+ tugas:[],
+ forum:[{nama:'Raka Pratama',teks:'Selamat datang di forum diskusi KSI.',t:'13/10/2026'}]
+};
+var db;
+function load(){try{db=JSON.parse(localStorage.getItem(K))}catch(e){db=null}if(!db)db=JSON.parse(JSON.stringify(seed))}
+function save(){try{localStorage.setItem(K,JSON.stringify(db))}catch(e){}}
+function sid(){try{return sessionStorage.getItem('sid')}catch(e){return null}}
+function me(){var i=sid();return db.users.find(function(u){return u.id==i&&u.aktif})}
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function $(i){return document.getElementById(i)}
+
+function login(){
+ var u=db.users.find(function(x){return x.u==$('lu').value&&x.p==$('lp').value&&x.aktif});
+ if(!u){$('err').textContent='Username atau sandi salah, atau akun nonaktif.';return}
+ try{sessionStorage.setItem('sid',u.id)}catch(e){}
+ location.hash='#/';render();
+}
+function logout(){try{sessionStorage.removeItem('sid')}catch(e){}location.hash='#/';render()}
+function resetData(){try{localStorage.removeItem(K)}catch(e){}load();logout()}
+
+function vLogin(){
+ return '<h2>Masuk ke portal</h2><div class="box"><label>Username</label><input id="lu" autocomplete="off">'+
+ '<label>Sandi</label><input id="lp" type="password" autocomplete="off"><p><button onclick="login()">Masuk</button> <span id="err" style="color:#b91c1c"></span></p></div>'+
+ '<div class="box"><b>Akun latihan (sintetis)</b><table><tr><th>Peran</th><th>Username</th><th>Sandi</th></tr>'+
+ db.users.map(function(u){return '<tr><td>'+u.role+'</td><td>'+u.u+'</td><td>'+u.p+'</td></tr>'}).join('')+'</table>'+
+ '<p><button class="sec" onclick="resetData()">Reset data latihan</button></p></div>';
+}
+function vHome(u){
+ return '<h2>Beranda</h2><p>Halo, '+esc(u.nama)+'. Anda masuk sebagai <b>'+u.role+'</b>.</p>'+
+ '<p>Mahasiswa dapat melihat nilai, mengunggah tugas, dan berdiskusi. Dosen memberi nilai. Admin mengelola akun.</p>';
+}
+/* VULN-1 (IDOR): id pemilik nilai diambil dari URL (#/nilai/ID) dan TIDAK dicocokkan dengan pengguna yang login. */
+function vNilai(uid){
+ var t=db.users.find(function(x){return x.id==uid});
+ if(!t)return '<p>Data tidak ditemukan.</p>';
+ return '<h2>Nilai: '+esc(t.nama)+' ('+esc(t.nim||'-')+')</h2><table><tr><th>Mata kuliah</th><th>Nilai</th></tr>'+
+ db.nilai.filter(function(n){return n.uid==uid}).map(function(n){return '<tr><td>'+esc(n.mk)+'</td><td>'+n.nilai+'</td></tr>'}).join('')+'</table>';
+}
+function vTugas(u){
+ var rows=db.tugas.filter(function(t){return t.uid==u.id}).map(function(t){return '<tr><td>'+esc(t.nama)+'</td><td>'+t.ukuran+' B</td><td>'+esc(t.t)+'</td></tr>'}).join('');
+ return '<h2>Unggah tugas</h2><div class="box"><input type="file" id="fl"> <button onclick="upload()">Unggah</button></div>'+
+ '<table><tr><th>Berkas</th><th>Ukuran</th><th>Waktu</th></tr>'+(rows||'<tr><td colspan="3">Belum ada tugas. Pilih berkas lalu klik Unggah.</td></tr>')+'</table>';
+}
+function upload(){
+ var f=$('fl').files[0],u=me();if(!f||!u)return;
+ db.tugas.push({uid:u.id,nama:f.name,ukuran:f.size,t:new Date().toLocaleString('id-ID')});save();render();
+}
+/* VULN-2 (Stored XSS): isi komentar disimpan apa adanya dan dirender dengan innerHTML tanpa encoding. */
+function vForum(){
+ return '<h2>Diskusi</h2><div class="box"><textarea id="kt" rows="3" placeholder="Tulis komentar"></textarea><p><button onclick="kirim()">Kirim komentar</button></p></div><div id="fp"></div>';
+}
+function drawForum(){
+ var el=$('fp');if(!el)return;
+ el.innerHTML=db.forum.map(function(p){return '<div class="post"><small>'+esc(p.nama)+' &middot; '+esc(p.t)+'</small><div>'+p.teks+'</div></div>'}).join('');
+}
+function kirim(){
+ var u=me(),t=$('kt').value;if(!u||!t.trim())return;
+ db.forum.push({nama:u.nama,teks:t,t:new Date().toLocaleString('id-ID')});save();render();
+}
+/* VULN-3 (Eskalasi hak akses): peran hanya disembunyikan di menu; rute /dosen dan /admin tidak memeriksa peran. */
+function vDosen(){
+ var ms=db.users.filter(function(x){return x.role=='mhs'});
+ return '<h2>Penilaian</h2><div class="box"><label>Mahasiswa</label><select id="dm">'+ms.map(function(m){return '<option value="'+m.id+'">'+esc(m.nama)+'</option>'}).join('')+'</select>'+
+ '<label>Mata kuliah</label><input id="dk" value="Keamanan Sistem Informasi"><label>Nilai (0-100)</label><input id="dn" type="number" min="0" max="100">'+
+ '<p><button onclick="beriNilai()">Simpan nilai</button></p></div>';
+}
+function beriNilai(){
+ var uid=+$('dm').value,mk=$('dk').value,n=+$('dn').value;if(!mk||$('dn').value==='')return;
+ var r=db.nilai.find(function(x){return x.uid==uid&&x.mk==mk});
+ if(r)r.nilai=n;else db.nilai.push({uid:uid,mk:mk,nilai:n});
+ save();alert('Nilai tersimpan.');
+}
+function vAdmin(){
+ return '<h2>Kelola akun</h2><table><tr><th>Username</th><th>Nama</th><th>Peran</th><th>Status</th></tr>'+
+ db.users.map(function(x){return '<tr><td>'+esc(x.u)+'</td><td>'+esc(x.nama)+'</td><td><select onchange="setRole('+x.id+',this.value)">'+
+ ['mhs','dosen','admin'].map(function(r){return '<option'+(r==x.role?' selected':'')+'>'+r+'</option>'}).join('')+'</select></td>'+
+ '<td><button class="sec" onclick="toggle('+x.id+')">'+(x.aktif?'Nonaktifkan':'Aktifkan')+'</button></td></tr>'}).join('')+'</table>';
+}
+function setRole(id,r){db.users.find(function(x){return x.id==id}).role=r;save()}
+function toggle(id){var x=db.users.find(function(y){return y.id==id});x.aktif=!x.aktif;save();render()}
+
+function render(){
+ var u=me(),p=(location.hash||'#/').split('/'),r=p[1],a=p[2],app=$('app'),nav=$('nav');
+ if(!u){nav.innerHTML='<b>Portal Kampus Fiktif</b>';app.innerHTML=vLogin();return}
+ nav.innerHTML='<b>Portal Kampus</b><a href="#/">Beranda</a>'+
+  (u.role=='mhs'?'<a href="#/nilai/'+u.id+'">Nilai</a><a href="#/tugas">Tugas</a>':'')+
+  '<a href="#/forum">Diskusi</a>'+(u.role=='dosen'?'<a href="#/dosen">Penilaian</a>':'')+(u.role=='admin'?'<a href="#/admin">Akun</a>':'')+
+  '<span>'+esc(u.nama)+' ('+u.role+') <a href="#/" onclick="logout()">Keluar</a></span>';
+ var v={nilai:function(){return vNilai(a)},tugas:vTugas,forum:vForum,dosen:vDosen,admin:vAdmin}[r]||vHome;
+ app.innerHTML=v(u);
+ if(r=='forum')drawForum();
+}
+window.addEventListener('hashchange',render);
+load();render();
+</script>
+</body>
+</html>
